@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Gästebuch{% endblock %}
+
+{% block content %}
+    <h2>Gästebuch</h2>
+    <form method="POST" class="mb-4">
+        {% csrf_token %}
+        <div class="mb-3">
+            <input type="text" name="name" class="form-control" placeholder="Dein Name" required>
+        </div>
+        <div class="mb-3">
+            <textarea name="text" class="form-control" placeholder="Dein Kommentar" required></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Abschicken</button>
+    </form>
+    <hr>
+    {% for k in kommentare %}
+        <div class="card mb-2">
+            <div class="card-body">
+                <strong>{{ k.name }}</strong> <small class="text-muted">{{ k.datum }}</small>
+                <p class="mb-0">{{ k.text }}</p>
+            </div>
+        </div>
+    {% endfor %}
+{% endblock %}
