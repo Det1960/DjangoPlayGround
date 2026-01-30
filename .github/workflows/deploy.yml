@@ -1,0 +1,46 @@
+name: Django CI/CD Deployment
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    # SCHRITT 1: Prüfen (Tests)
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install django
+
+    - name: Run Django Checks
+      run: |
+        python manage.py check
+        # Hier könnten später auch 'python manage.py test' stehen
+
+    # SCHRITT 2: Deployment auf deinen Server
+    - name: Deploy to Ubuntu Server
+      if: success() # Nur wenn die Tests oben bestanden wurden!
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SERVER_IP }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        script: |
+          cd ~/django/projekte
+          git pull origin main
+          source ~/django/djangoenv/bin/activate
+          pip install -r requirements.txt
+          python manage.py migrate
+          # Falls du Methode 1 (nohup) nutzt, müsstest du den Prozess hier neu starten
+          pkill -f runserver || true
+          nohup python manage.py runserver 0.0.0.0:8000 &
