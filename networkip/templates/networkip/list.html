@@ -5,23 +5,25 @@
 {% block content %}
 <h1>Netzwerk-Scanner</h1>
 
-<form class="row g-3 mb-3" method="get">
+<form id="scan-form" class="row g-3 mb-3">
   <div class="col-auto">
     <label class="form-label">Basis</label>
-    <input name="base" class="form-control" value="{{ base }}" />
+    <input id="base" name="base" class="form-control" value="{{ base }}" />
   </div>
   <div class="col-auto">
     <label class="form-label">Start</label>
-    <input name="start" type="number" class="form-control" value="{{ start }}" />
+    <input id="start" name="start" type="number" class="form-control" value="{{ start }}" />
   </div>
   <div class="col-auto">
     <label class="form-label">Ende</label>
-    <input name="end" type="number" class="form-control" value="{{ end }}" />
+    <input id="end" name="end" type="number" class="form-control" value="{{ end }}" />
   </div>
   <div class="col-auto align-self-end">
-    <button class="btn btn-primary">Scan</button>
+    <button id="scan-btn" class="btn btn-primary">Scan</button>
   </div>
 </form>
+
+<div id="status" class="mb-3" aria-live="polite"></div>
 
 <div class="table-responsive">
   <table class="table table-striped">
@@ -29,27 +31,76 @@
       <tr>
         <th>IP</th>
         <th>Hostname</th>
-        <th>Status</th>
       </tr>
     </thead>
-    <tbody>
-    {% for r in results %}
-      <tr>
-        <td>{{ r.ip }}</td>
-        <td>{{ r.hostname }}</td>
-        <td>
-          {% if r.alive %}
-            <span class="badge bg-success">online</span>
-          {% else %}
-            <span class="badge bg-secondary">offline</span>
-          {% endif %}
-        </td>
-      </tr>
-    {% empty %}
-      <tr><td colspan="3">Keine Einträge</td></tr>
-    {% endfor %}
+    <tbody id="results-body">
     </tbody>
   </table>
 </div>
 
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const form = document.getElementById('scan-form');
+  const status = document.getElementById('status');
+  const resultsBody = document.getElementById('results-body');
+
+  function showStatus(text, busy=false){
+    status.innerHTML = '';
+    const el = document.createElement('div');
+    el.className = busy ? 'alert alert-info' : 'alert alert-secondary';
+    el.textContent = text;
+    status.appendChild(el);
+  }
+
+  function renderResults(items){
+    resultsBody.innerHTML = '';
+    if(!items || items.length === 0){
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 2;
+      td.textContent = 'Keine Geräte gefunden';
+      tr.appendChild(td);
+      resultsBody.appendChild(tr);
+      return;
+    }
+
+    items.forEach(r => {
+      const tr = document.createElement('tr');
+      const ipTd = document.createElement('td');
+      ipTd.textContent = r.ip;
+      const hostTd = document.createElement('td');
+      hostTd.textContent = r.hostname || '-';
+      tr.appendChild(ipTd);
+      tr.appendChild(hostTd);
+      resultsBody.appendChild(tr);
+    });
+  }
+
+  async function runScan(e){
+    if(e) e.preventDefault();
+    const base = document.getElementById('base').value;
+    const start = document.getElementById('start').value;
+    const end = document.getElementById('end').value;
+
+    showStatus('Scan läuft... Bitte warten.', true);
+    renderResults([]);
+
+    try{
+      const params = new URLSearchParams({base, start, end});
+      const resp = await fetch('api/?' + params.toString());
+      if(!resp.ok) throw new Error('Netzwerkfehler');
+      const data = await resp.json();
+      renderResults(data.results);
+      showStatus('Scan fertig — ' + (data.results.length || 0) + ' Gerät(e) gefunden.');
+    }catch(err){
+      showStatus('Fehler beim Scan: ' + err.message);
+    }
+  }
+
+  form.addEventListener('submit', runScan);
+
+  // optional: run initial scan on load
+  runScan();
+});
+</script>
 {% endblock %}
