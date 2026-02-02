@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Netzwerk-Scanner{% endblock %}
+
+{% block content %}
+<h1>Netzwerk-Scanner</h1>
+
+<form class="row g-3 mb-3" method="get">
+  <div class="col-auto">
+    <label class="form-label">Basis</label>
+    <input name="base" class="form-control" value="{{ base }}" />
+  </div>
+  <div class="col-auto">
+    <label class="form-label">Start</label>
+    <input name="start" type="number" class="form-control" value="{{ start }}" />
+  </div>
+  <div class="col-auto">
+    <label class="form-label">Ende</label>
+    <input name="end" type="number" class="form-control" value="{{ end }}" />
+  </div>
+  <div class="col-auto align-self-end">
+    <button class="btn btn-primary">Scan</button>
+  </div>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>IP</th>
+        <th>Hostname</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in results %}
+      <tr>
+        <td>{{ r.ip }}</td>
+        <td>{{ r.hostname }}</td>
+        <td>
+          {% if r.alive %}
+            <span class="badge bg-success">online</span>
+          {% else %}
+            <span class="badge bg-secondary">offline</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="3">Keine Einträge</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
