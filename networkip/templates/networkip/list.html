@@ -5,51 +5,121 @@
 {% block content %}
 <h1>Netzwerk-Scanner</h1>
 
-<form class="row g-3 mb-3" method="get">
-  <div class="col-auto">
-    <label class="form-label">Basis</label>
-    <input name="base" class="form-control" value="{{ base }}" />
+<div class="row">
+  <!-- Home Network Section -->
+  <div class="col-lg-6 mb-4">
+    <div class="card border-primary">
+      <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">Heimnetz (192.168.178.x)</h5>
+      </div>
+      <div class="card-body">
+        <button id="scan-home-btn" class="btn btn-primary mb-3">Scan starten</button>
+        <div id="home-status" class="mb-3" aria-live="polite"></div>
+        <div class="table-responsive">
+          <table class="table table-sm table-striped">
+            <thead>
+              <tr>
+                <th>IP</th>
+                <th>Hostname</th>
+              </tr>
+            </thead>
+            <tbody id="home-results-body">
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
-  <div class="col-auto">
-    <label class="form-label">Start</label>
-    <input name="start" type="number" class="form-control" value="{{ start }}" />
-  </div>
-  <div class="col-auto">
-    <label class="form-label">Ende</label>
-    <input name="end" type="number" class="form-control" value="{{ end }}" />
-  </div>
-  <div class="col-auto align-self-end">
-    <button class="btn btn-primary">Scan</button>
-  </div>
-</form>
 
-<div class="table-responsive">
-  <table class="table table-striped">
-    <thead>
-      <tr>
-        <th>IP</th>
-        <th>Hostname</th>
-        <th>Status</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for r in results %}
-      <tr>
-        <td>{{ r.ip }}</td>
-        <td>{{ r.hostname }}</td>
-        <td>
-          {% if r.alive %}
-            <span class="badge bg-success">online</span>
-          {% else %}
-            <span class="badge bg-secondary">offline</span>
-          {% endif %}
-        </td>
-      </tr>
-    {% empty %}
-      <tr><td colspan="3">Keine Einträge</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  <!-- VM Network Section -->
+  <div class="col-lg-6 mb-4">
+    <div class="card border-warning">
+      <div class="card-header bg-warning text-dark">
+        <h5 class="mb-0">VMs (192.168.122.x)</h5>
+      </div>
+      <div class="card-body">
+        <button id="scan-vm-btn" class="btn btn-warning mb-3">Scan starten</button>
+        <div id="vm-status" class="mb-3" aria-live="polite"></div>
+        <div class="table-responsive">
+          <table class="table table-sm table-striped">
+            <thead>
+              <tr>
+                <th>IP</th>
+                <th>Hostname</th>
+              </tr>
+            </thead>
+            <tbody id="vm-results-body">
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  function showStatus(statusEl, text, busy=false){
+    statusEl.innerHTML = '';
+    const el = document.createElement('div');
+    el.className = busy ? 'alert alert-info' : 'alert alert-secondary';
+    el.textContent = text;
+    statusEl.appendChild(el);
+  }
+
+  function renderResults(resultsBody, items){
+    resultsBody.innerHTML = '';
+    if(!items || items.length === 0){
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 2;
+      td.textContent = 'Keine Geräte gefunden';
+      tr.appendChild(td);
+      resultsBody.appendChild(tr);
+      return;
+    }
+
+    items.forEach(r => {
+      const tr = document.createElement('tr');
+      const ipTd = document.createElement('td');
+      ipTd.textContent = r.ip;
+      const hostTd = document.createElement('td');
+      hostTd.textContent = r.hostname || '-';
+      tr.appendChild(ipTd);
+      tr.appendChild(hostTd);
+      resultsBody.appendChild(tr);
+    });
+  }
+
+  async function runScan(endpoint, statusEl, resultsBody, buttonEl){
+    buttonEl.disabled = true;
+    showStatus(statusEl, 'Scan läuft... Bitte warten.', true);
+    renderResults(resultsBody, []);
+
+    try{
+      const resp = await fetch(endpoint);
+      if(!resp.ok) throw new Error('Netzwerkfehler');
+      const data = await resp.json();
+      renderResults(resultsBody, data.results);
+      showStatus(statusEl, 'Scan fertig — ' + (data.results.length || 0) + ' Gerät(e) gefunden.');
+    }catch(err){
+      showStatus(statusEl, 'Fehler beim Scan: ' + err.message);
+    }finally{
+      buttonEl.disabled = false;
+    }
+  }
+
+  // Home network
+  const homeBtn = document.getElementById('scan-home-btn');
+  const homeStatus = document.getElementById('home-status');
+  const homeResults = document.getElementById('home-results-body');
+  homeBtn.addEventListener('click', () => runScan('api/home/', homeStatus, homeResults, homeBtn));
+
+  // VM network
+  const vmBtn = document.getElementById('scan-vm-btn');
+  const vmStatus = document.getElementById('vm-status');
+  const vmResults = document.getElementById('vm-results-body');
+  vmBtn.addEventListener('click', () => runScan('api/vm/', vmStatus, vmResults, vmBtn));
+});
+</script>
 {% endblock %}

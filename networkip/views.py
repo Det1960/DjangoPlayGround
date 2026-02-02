@@ -1,28 +1,23 @@
 from django.shortcuts import render
-from django.http import HttpRequest
+from django.http import HttpRequest, JsonResponse
 
 from .networkscanner import scan_network
 
 
 def index(request: HttpRequest):
-    # einfache GET-Parameter, mit sicheren Defaults
-    try:
-        start = int(request.GET.get('start', '1'))
-    except ValueError:
-        start = 1
-    try:
-        end = int(request.GET.get('end', '20'))
-    except ValueError:
-        end = 20
+    # Render the page; actual scanning happens via JS calling the API endpoints.
+    return render(request, 'networkip/list.html')
 
-    base = request.GET.get('base', '192.168.1.')
 
-    # scan durchführen (kleiner Bereich empfohlen)
-    results = scan_network(base=base, start=start, end=end)
+def api_scan_home(request: HttpRequest):
+    # API endpoint for home network (192.168.178.x) - scan all 255 addresses
+    results = scan_network(base="192.168.178.", start=1, end=255)
+    alive = [r for r in results if r.get('alive')]
+    return JsonResponse({'results': alive})
 
-    return render(request, 'networkip/list.html', {
-        'results': results,
-        'base': base,
-        'start': start,
-        'end': end,
-    })
+
+def api_scan_vm(request: HttpRequest):
+    # API endpoint for VM network (192.168.122.x) - scan all 255 addresses
+    results = scan_network(base="192.168.122.", start=1, end=255)
+    alive = [r for r in results if r.get('alive')]
+    return JsonResponse({'results': alive})
