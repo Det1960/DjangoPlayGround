@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -37,9 +38,18 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # Deine festen Apps:
     'gaestebuch',
-    'demo',
 ]
+
+# Automatisches Hinzufügen von Apps, die eine apps.py haben
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+for item in PROJECT_DIR.iterdir():
+    # Wenn es ein Ordner ist und eine apps.py enthält, ist es eine Django-App
+    if item.is_dir() and (item / 'apps.py').exists():
+        app_name = item.name
+        if app_name not in INSTALLED_APPS:
+            INSTALLED_APPS.append(app_name)
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
