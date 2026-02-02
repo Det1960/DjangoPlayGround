@@ -1,7 +1,7 @@
 import concurrent.futures
 import socket
 import subprocess
-from typing import List, Dict
+from typing import List, Dict, Generator, Tuple
 
 
 def _ping_ip(ip: str) -> bool:
@@ -53,6 +53,42 @@ def scan_network(base: str = "192.168.1.", start: int = 1, end: int = 255, max_w
 
     results.sort(key=_ip_key)
     return results
+
+
+def scan_network_streaming(base: str = "192.168.1.", start: int = 1, end: int = 255, max_workers: int = 100) -> Generator[Tuple[int, int, Dict], None, None]:
+    """Generator that yields progress and alive hosts during scanning.
+    
+    Yields: (current, total, result_dict)
+      - current: IP index processed (1-based)
+      - total: total IPs to scan
+      - result_dict: {"ip": "...", "hostname": "...", "alive": True/False} or None for progress-only
+    """
+    start = max(1, int(start))
+    end = min(254, int(end))
+    ips = [f"{base}{i}" for i in range(start, end + 1)]
+    total = len(ips)
+    processed = 0
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(max_workers, len(ips))) as e:
+        futures = {e.submit(_ping_ip, ip): ip for ip in ips}
+        for fut in concurrent.futures.as_completed(futures):
+            processed += 1
+            ip = futures[fut]
+            alive = False
+            try:
+                alive = bool(fut.result())
+            except Exception:
+                alive = False
+
+            hostname = "-"
+            if alive:
+                try:
+                    hostname = socket.gethostbyaddr(ip)[0]
+                except Exception:
+                    hostname = "-"
+
+            result = {"ip": ip, "hostname": hostname, "alive": alive}
+            yield (processed, total, result)
 
 
 if __name__ == '__main__':
