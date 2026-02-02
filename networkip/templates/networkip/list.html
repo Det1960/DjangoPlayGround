@@ -93,15 +93,40 @@ document.addEventListener('DOMContentLoaded', function(){
 
   async function runScan(endpoint, statusEl, resultsBody, buttonEl){
     buttonEl.disabled = true;
-    showStatus(statusEl, 'Scan läuft... Bitte warten.', true);
+    showStatus(statusEl, 'Läuft 0/255', true);
     renderResults(resultsBody, []);
 
     try{
       const resp = await fetch(endpoint);
       if(!resp.ok) throw new Error('Netzwerkfehler');
-      const data = await resp.json();
-      renderResults(resultsBody, data.results);
-      showStatus(statusEl, 'Scan fertig — ' + (data.results.length || 0) + ' Gerät(e) gefunden.');
+      
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let results = [];
+
+      while(true){
+        const {done, value} = await reader.read();
+        if(done) break;
+
+        const text = decoder.decode(value, {stream: true});
+        const lines = text.split('\n').filter(l => l.trim());
+
+        for(const line of lines){
+          try{
+            const data = JSON.parse(line);
+            if(data.done){
+              // Final results
+              renderResults(resultsBody, data.results || []);
+              showStatus(statusEl, 'Scan fertig — ' + (data.results?.length || 0) + ' Gerät(e) gefunden.');
+            }else if(data.progress){
+              // Progress update
+              showStatus(statusEl, `Läuft ${data.progress}/${data.total} (${data.alive_count} aktiv)`, true);
+            }
+          }catch(e){
+            console.error('JSON parse error:', e);
+          }
+        }
+      }
     }catch(err){
       showStatus(statusEl, 'Fehler beim Scan: ' + err.message);
     }finally{
@@ -113,13 +138,13 @@ document.addEventListener('DOMContentLoaded', function(){
   const homeBtn = document.getElementById('scan-home-btn');
   const homeStatus = document.getElementById('home-status');
   const homeResults = document.getElementById('home-results-body');
-  homeBtn.addEventListener('click', () => runScan('api/home/', homeStatus, homeResults, homeBtn));
+  homeBtn.addEventListener('click', () => runScan('api/home/stream/', homeStatus, homeResults, homeBtn));
 
   // VM network
   const vmBtn = document.getElementById('scan-vm-btn');
   const vmStatus = document.getElementById('vm-status');
   const vmResults = document.getElementById('vm-results-body');
-  vmBtn.addEventListener('click', () => runScan('api/vm/', vmStatus, vmResults, vmBtn));
+  vmBtn.addEventListener('click', () => runScan('api/vm/stream/', vmStatus, vmResults, vmBtn));
 });
 </script>
 {% endblock %}
