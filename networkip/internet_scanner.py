@@ -227,45 +227,126 @@ def test_ftp_access(host: str, username: str, password: str, port: int = 21) -> 
 
 def scan_internet_security(url: str) -> Generator[Tuple[int, str, Dict], None, None]:
     """Generator that tests various security vulnerabilities on a URL.
-    
+
     Yields: (step_num, description, result_dict)
     """
     parsed = urlparse(url if url.startswith(('http://', 'https://')) else f"http://{url}")
     host = parsed.netloc.split(':')[0]
     base_url = f"{parsed.scheme}://{parsed.netloc}"
-    
+
     step = 0
-    
+
     # Step 1: Test basic accessibility
     step += 1
-    yield (step, "Teste HTTP-Zugriff", test_http_access(base_url))
-    
-        # Step 2-N: Test HTTP Basic Auth with default credentials (requests + curl)
-        for username, password in DEFAULT_CREDENTIALS:
-         step += 1
-         # requests-based check
-         yield (step, f"Teste HTTP Basic Auth (requests): {username}/{password}",
-             test_http_basic_auth(base_url, username, password))
-         # curl-based check (may provide different behavior)
-         step += 1
-         yield (step, f"Teste HTTP Basic Auth (curl): {username}/{password}",
-             test_http_basic_auth_curl(base_url, username, password))
-    
+    r = test_http_access(base_url)
+    r['analysis'] = analyze_result(r, "Teste HTTP-Zugriff")
+    yield (step, "Teste HTTP-Zugriff", r)
+
+    # Step 2-N: Test HTTP Basic Auth with default credentials (requests + curl)
+    for username, password in DEFAULT_CREDENTIALS:
+        step += 1
+        r1 = test_http_basic_auth(base_url, username, password)
+        r1['analysis'] = analyze_result(r1, f"Teste HTTP Basic Auth (requests): {username}/{password}")
+        yield (step, f"Teste HTTP Basic Auth (requests): {username}/{password}", r1)
+
+        step += 1
+        r2 = test_http_basic_auth_curl(base_url, username, password)
+        r2['analysis'] = analyze_result(r2, f"Teste HTTP Basic Auth (curl): {username}/{password}")
+        yield (step, f"Teste HTTP Basic Auth (curl): {username}/{password}", r2)
+
     # Step N+1: Check for backdoor files
     step += 1
     backdoor_results = test_backdoor_files(base_url)
     for result in backdoor_results:
+        result['analysis'] = analyze_result(result, f"Prüfe Datei: {result.get('path', '?')}")
         yield (step, f"Prüfe Datei: {result.get('path', '?')}", result)
         step += 1
-    
+
     # Step N+2: Try SSH access
     for username, password in DEFAULT_CREDENTIALS:
         step += 1
-        yield (step, f"Teste SSH: {username}/{password}", 
-               test_ssh_access(host, username, password))
-    
+        r = test_ssh_access(host, username, password)
+        r['analysis'] = analyze_result(r, f"Teste SSH: {username}/{password}")
+        yield (step, f"Teste SSH: {username}/{password}", r)
+
     # Step N+3: Try FTP access
     for username, password in DEFAULT_CREDENTIALS:
         step += 1
-        yield (step, f"Teste FTP: {username}/{password}", 
-               test_ftp_access(host, username, password))
+        r = test_ftp_access(host, username, password)
+        r['analysis'] = analyze_result(r, f"Teste FTP: {username}/{password}")
+        yield (step, f"Teste FTP: {username}/{password}", r)
+
+
+def analyze_result(result: Dict, description: str) -> Dict:
+    """Produce a small analysis with severity and remediation suggestions for a scan result."""
+    sev = 'info'
+    summary = 'Keine Aktion nötig'
+    remediation: List[str] = []
+
+    t = result.get('type')
+
+    if t == 'http_basic_auth':
+        # success true indicates credentials worked
+        if result.get('success'):
+            sev = 'high'
+            summary = 'HTTP Basic Auth mit Standardzugang möglich'
+            remediation = [
+                'Sofort Passwort ändern oder Basic-Auth deaktivieren',
+                'HTTPS erzwingen, Basic-Auth hinter zusätzlicher Auth oder VPN betreiben',
+                'Logs auf verdächtige Aktivitäten prüfen',
+            ]
+        elif result.get('status_code') and result.get('status_code') >= 400:
+            sev = 'info'
+            summary = 'Zugang verweigert oder nicht zugänglich'
+        elif result.get('error'):
+            sev = 'warning'
+            summary = 'Fehler beim Test: ' + str(result.get('error'))
+
+    elif t == 'backdoor_file':
+        if result.get('found'):
+            sev = 'critical'
+            summary = f"Sensible/Backdoor-Datei erreichbar: {result.get('path')}"
+            remediation = [
+                'Datei aus Webroot entfernen',
+                'Gegebenenfalls Server isolieren und forensisch untersuchen',
+                'Alle Secrets/Keys/Passwörter rotieren',
+            ]
+        else:
+            sev = 'info'
+            summary = 'Datei nicht erreichbar'
+
+    elif t == 'http_access':
+        sc = result.get('status_code')
+        if sc and sc < 400:
+            sev = 'info'
+            summary = f'HTTP erreichbar (Status {sc})'
+            remediation = ['HTTPS erzwingen, Header prüfen (HSTS)']
+        else:
+            sev = 'info'
+            summary = f'Nicht erreichbar oder Fehler (Status {sc})'
+
+    elif t in ('ssh_access', 'ftp_access'):
+        if result.get('success'):
+            sev = 'critical'
+            summary = f'Zugang über {t.split("_")[0].upper()} mit Standard-Credentials möglich'
+            remediation = [
+                'Zugang sofort sperren/Passwörter ändern',
+                'Passwort-Authentifizierung deaktivieren (SSH) und nur Schlüssel verwenden',
+                'Zugriffs-Ports beschränken und Logins prüfen',
+            ]
+        elif result.get('error') == 'paramiko not installed':
+            sev = 'info'
+            summary = 'SSH-Test übersprungen (paramiko fehlt)'
+        else:
+            sev = 'info'
+            summary = 'Zugang nicht möglich'
+
+    else:
+        summary = 'Unbekannter Befund'
+
+    return {
+        'severity': sev,
+        'summary': summary,
+        'remediation': remediation,
+        'description': description,
+    }
