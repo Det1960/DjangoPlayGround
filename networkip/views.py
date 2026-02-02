@@ -64,25 +64,33 @@ def api_scan_internet(request: HttpRequest):
     
     def stream():
         vulnerabilities = []
-        total_steps = 20  # approximate
         
         try:
             for step, description, result in scan_internet_security(url):
-                # Check if vulnerability was found
-                if result.get('success') or (result.get('found') and result.get('status_code', 500) < 400):
-                    vulnerabilities.append({
+                # Only yield if this is a real vulnerability (success or found)
+                is_vulnerable = (
+                    result.get('success') or 
+                    result.get('found') or
+                    (result.get('analysis', {}).get('severity') in ['high', 'critical'])
+                )
+                
+                if is_vulnerable and result.get('analysis'):
+                    vuln = {
                         'type': result.get('type', 'unknown'),
                         'description': description,
+                        'severity': result.get('analysis', {}).get('severity'),
+                        'summary': result.get('analysis', {}).get('summary'),
+                        'remediation': result.get('analysis', {}).get('remediation', []),
                         'details': result,
-                    })
-                
-                # Send progress update as JSON line
-                yield json.dumps({
-                    'step': step,
-                    'description': description,
-                    'vulnerability_count': len(vulnerabilities),
-                    'in_progress': True,
-                }) + '\n'
+                    }
+                    vulnerabilities.append(vuln)
+                    
+                    # Send update as JSON line (only vulnerabilities)
+                    yield json.dumps({
+                        'vulnerability': vuln,
+                        'vulnerability_count': len(vulnerabilities),
+                        'in_progress': True,
+                    }) + '\n'
             
             # Send final results
             yield json.dumps({
