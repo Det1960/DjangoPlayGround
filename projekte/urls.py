@@ -20,5 +20,6 @@ from django.urls import path, include
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('demo/', include('demo.urls')),      # Erreichbar unter /demo/
+    path('networkip/', include('networkip.urls')),
     path('', include('gaestebuch.urls')),     # Das Gästebuch ist die Startseite (/)
 ]
