@@ -1,5 +1,6 @@
 import socket
 import requests
+import subprocess
 try:
     import paramiko
     HAS_PARAMIKO = True
@@ -87,6 +88,37 @@ def test_http_basic_auth(url: str, username: str, password: str) -> Dict:
             "password": password,
             "error": str(e),
         }
+
+def test_http_basic_auth_curl(url: str, username: str, password: str) -> Dict:
+    """Attempt HTTP Basic Auth using system `curl`. Falls back to requests if curl fehlt."""
+    cmd = [
+        "curl",
+        "-s",
+        "-o", "/dev/null",
+        "-w", "%{http_code}",
+        "-u", f"{username}:{password}",
+        url,
+    ]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=6)
+        stdout = proc.stdout.strip()
+        status_code = int(stdout) if stdout.isdigit() else None
+        success = (status_code is not None and status_code < 400)
+        return {
+            "type": "http_basic_auth",
+            "method": "curl",
+            "url": url,
+            "username": username,
+            "password": password,
+            "status_code": status_code,
+            "success": success,
+        }
+    except FileNotFoundError:
+        # curl not available, fallback
+        return {"type": "http_basic_auth", "method": "curl", "error": "curl not installed"}
+    except Exception:
+        # fallback to requests implementation if anything goes wrong
+        return test_http_basic_auth(url, username, password)
 
 
 def test_backdoor_files(base_url: str) -> List[Dict]:
@@ -208,11 +240,16 @@ def scan_internet_security(url: str) -> Generator[Tuple[int, str, Dict], None, N
     step += 1
     yield (step, "Teste HTTP-Zugriff", test_http_access(base_url))
     
-    # Step 2-N: Test HTTP Basic Auth with default credentials
-    for username, password in DEFAULT_CREDENTIALS:
-        step += 1
-        yield (step, f"Teste HTTP Basic Auth: {username}/{password}", 
-               test_http_basic_auth(base_url, username, password))
+        # Step 2-N: Test HTTP Basic Auth with default credentials (requests + curl)
+        for username, password in DEFAULT_CREDENTIALS:
+         step += 1
+         # requests-based check
+         yield (step, f"Teste HTTP Basic Auth (requests): {username}/{password}",
+             test_http_basic_auth(base_url, username, password))
+         # curl-based check (may provide different behavior)
+         step += 1
+         yield (step, f"Teste HTTP Basic Auth (curl): {username}/{password}",
+             test_http_basic_auth_curl(base_url, username, password))
     
     # Step N+1: Check for backdoor files
     step += 1
