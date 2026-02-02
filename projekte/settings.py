@@ -38,8 +38,6 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    # Deine festen Apps:
-    'gaestebuch',
 ]
 
 # Automatisches Hinzufügen von Apps, die eine apps.py haben
