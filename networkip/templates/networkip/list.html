@@ -3,7 +3,7 @@
 {% block title %}Netzwerk-Scanner{% endblock %}
 
 {% block content %}
-<h1>Netzwerk-Scanner</h1>
+<h1>Netzwerk- & Sicherheits-Scanner</h1>
 
 <div class="row">
   <!-- Home Network Section -->
@@ -52,6 +52,25 @@
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Internet Security Section -->
+<div class="row mt-4">
+  <div class="col-lg-12 mb-4">
+    <div class="card border-danger">
+      <div class="card-header bg-danger text-white">
+        <h5 class="mb-0">Internet-Sicherheits-Scanner</h5>
+      </div>
+      <div class="card-body">
+        <div class="input-group mb-3">
+          <input id="internet-url" type="text" class="form-control" placeholder="z.B. example.com oder https://example.com" />
+          <button id="scan-internet-btn" class="btn btn-danger">Scan starten</button>
+        </div>
+        <div id="internet-status" class="mb-3" aria-live="polite"></div>
+        <div id="internet-vulnerabilities" class="mb-3"></div>
       </div>
     </div>
   </div>
@@ -134,6 +153,82 @@ document.addEventListener('DOMContentLoaded', function(){
     }
   }
 
+  // Internet Security Scan
+  async function runInternetScan(){
+    const url = document.getElementById('internet-url').value.trim();
+    if(!url){
+      alert('Bitte URL eingeben');
+      return;
+    }
+
+    const btn = document.getElementById('scan-internet-btn');
+    const statusEl = document.getElementById('internet-status');
+    const vulnEl = document.getElementById('internet-vulnerabilities');
+
+    btn.disabled = true;
+    showStatus(statusEl, 'Scan läuft...', true);
+    vulnEl.innerHTML = '';
+
+    try{
+      const resp = await fetch('api/internet/?url=' + encodeURIComponent(url));
+      if(!resp.ok) throw new Error('Netzwerkfehler');
+      
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let vulnerabilities = [];
+
+      while(true){
+        const {done, value} = await reader.read();
+        if(done) break;
+
+        const text = decoder.decode(value, {stream: true});
+        const lines = text.split('\n').filter(l => l.trim());
+
+        for(const line of lines){
+          try{
+            const data = JSON.parse(line);
+            if(data.error){
+              showStatus(statusEl, 'Fehler: ' + data.error);
+            }else if(data.done){
+              vulnerabilities = data.vulnerabilities || [];
+              showStatus(statusEl, 'Scan fertig — ' + vulnerabilities.length + ' Sicherheitsproblem(e) gefunden.');
+              renderVulnerabilities(vulnEl, vulnerabilities);
+            }else if(data.in_progress){
+              showStatus(statusEl, `${data.description} (${data.vulnerability_count} gefunden)`, true);
+            }
+          }catch(e){
+            console.error('JSON parse error:', e);
+          }
+        }
+      }
+    }catch(err){
+      showStatus(statusEl, 'Fehler beim Scan: ' + err.message);
+    }finally{
+      btn.disabled = false;
+    }
+  }
+
+  function renderVulnerabilities(container, vulns){
+    container.innerHTML = '';
+    if(!vulns || vulns.length === 0){
+      const alert = document.createElement('div');
+      alert.className = 'alert alert-success';
+      alert.textContent = '✓ Keine bekannten Sicherheitsprobleme gefunden!';
+      container.appendChild(alert);
+      return;
+    }
+
+    vulns.forEach(vuln => {
+      const card = document.createElement('div');
+      card.className = 'alert alert-warning mb-2';
+      card.innerHTML = `
+        <strong>${vuln.type}</strong><br/>
+        ${vuln.description}
+      `;
+      container.appendChild(card);
+    });
+  }
+
   // Home network
   const homeBtn = document.getElementById('scan-home-btn');
   const homeStatus = document.getElementById('home-status');
@@ -145,6 +240,15 @@ document.addEventListener('DOMContentLoaded', function(){
   const vmStatus = document.getElementById('vm-status');
   const vmResults = document.getElementById('vm-results-body');
   vmBtn.addEventListener('click', () => runScan('api/vm/stream/', vmStatus, vmResults, vmBtn));
+
+  // Internet scanner
+  const internetBtn = document.getElementById('scan-internet-btn');
+  internetBtn.addEventListener('click', runInternetScan);
+
+  // Allow Enter key to start internet scan
+  document.getElementById('internet-url').addEventListener('keypress', (e) => {
+    if(e.key === 'Enter') runInternetScan();
+  });
 });
 </script>
 {% endblock %}

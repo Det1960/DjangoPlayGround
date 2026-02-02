@@ -9,4 +9,5 @@ urlpatterns = [
     path('api/vm/', views.api_scan_vm, name='api_scan_vm'),
     path('api/home/stream/', views.api_scan_home_stream, name='api_scan_home_stream'),
     path('api/vm/stream/', views.api_scan_vm_stream, name='api_scan_vm_stream'),
+    path('api/internet/', views.api_scan_internet, name='api_scan_internet'),
 ]
