@@ -1,12 +1,19 @@
 import socket
 import requests
-import paramiko
+try:
+    import paramiko
+    HAS_PARAMIKO = True
+except Exception:
+    paramiko = None
+    HAS_PARAMIKO = False
+
 from typing import Dict, List, Generator, Tuple
 from urllib.parse import urlparse
 import warnings
 
-# Suppress paramiko warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning)
+if HAS_PARAMIKO:
+    # Suppress paramiko warnings when installed
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # Common default credentials to test
 DEFAULT_CREDENTIALS = [
@@ -112,7 +119,18 @@ def test_backdoor_files(base_url: str) -> List[Dict]:
 
 
 def test_ssh_access(host: str, username: str, password: str, port: int = 22) -> Dict:
-    """Test SSH access with given credentials."""
+    """Test SSH access with given credentials. If paramiko is not installed, return an explanatory error."""
+    if not HAS_PARAMIKO:
+        return {
+            "type": "ssh_access",
+            "host": host,
+            "port": port,
+            "username": username,
+            "password": password,
+            "success": False,
+            "error": "paramiko not installed",
+        }
+
     try:
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
