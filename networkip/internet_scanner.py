@@ -288,32 +288,36 @@ def analyze_result(result: Dict, description: str) -> Dict:
     if t == 'http_basic_auth':
         # success true indicates credentials worked
         if result.get('success'):
+            user = result.get('username', '?')
+            pwd = result.get('password', '?')
             sev = 'high'
-            summary = 'HTTP Basic Auth mit Standardzugang möglich'
+            summary = f'✗ Anmeldung möglich mit: {user} / {pwd}'
             remediation = [
-                'Sofort Passwort ändern oder Basic-Auth deaktivieren',
+                f'Sofort Passwort für "{user}" ändern oder Account deaktivieren',
                 'HTTPS erzwingen, Basic-Auth hinter zusätzlicher Auth oder VPN betreiben',
                 'Logs auf verdächtige Aktivitäten prüfen',
             ]
         elif result.get('status_code') and result.get('status_code') >= 400:
             sev = 'info'
-            summary = 'Zugang verweigert oder nicht zugänglich'
+            summary = f'Zugang verweigert ({result.get("username", "?")} / {result.get("password", "?")})'
         elif result.get('error'):
             sev = 'warning'
             summary = 'Fehler beim Test: ' + str(result.get('error'))
 
     elif t == 'backdoor_file':
+        path = result.get('path', '?')
         if result.get('found'):
             sev = 'critical'
-            summary = f"Sensible/Backdoor-Datei erreichbar: {result.get('path')}"
+            status = result.get('status_code', '?')
+            summary = f'✗ Datei erreichbar: {path} (HTTP {status})'
             remediation = [
-                'Datei aus Webroot entfernen',
+                f'Sofort "{path}" aus Webroot entfernen/sperren',
                 'Gegebenenfalls Server isolieren und forensisch untersuchen',
                 'Alle Secrets/Keys/Passwörter rotieren',
             ]
         else:
             sev = 'info'
-            summary = 'Datei nicht erreichbar'
+            summary = f'Datei nicht erreichbar: {path}'
 
     elif t == 'http_access':
         sc = result.get('status_code')
@@ -326,20 +330,23 @@ def analyze_result(result: Dict, description: str) -> Dict:
             summary = f'Nicht erreichbar oder Fehler (Status {sc})'
 
     elif t in ('ssh_access', 'ftp_access'):
+        proto = t.split("_")[0].upper()
+        user = result.get('username', '?')
+        pwd = result.get('password', '?')
         if result.get('success'):
             sev = 'critical'
-            summary = f'Zugang über {t.split("_")[0].upper()} mit Standard-Credentials möglich'
+            summary = f'✗ {proto} Anmeldung möglich mit: {user} / {pwd}'
             remediation = [
-                'Zugang sofort sperren/Passwörter ändern',
+                f'Sofort Passwort für "{user}" ändern oder Account sperren',
                 'Passwort-Authentifizierung deaktivieren (SSH) und nur Schlüssel verwenden',
                 'Zugriffs-Ports beschränken und Logins prüfen',
             ]
         elif result.get('error') == 'paramiko not installed':
             sev = 'info'
-            summary = 'SSH-Test übersprungen (paramiko fehlt)'
+            summary = f'{proto}-Test übersprungen (paramiko fehlt)'
         else:
             sev = 'info'
-            summary = 'Zugang nicht möglich'
+            summary = f'{proto} Zugang nicht möglich ({user} / {pwd})'
 
     else:
         summary = 'Unbekannter Befund'
