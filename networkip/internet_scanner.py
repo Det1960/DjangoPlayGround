@@ -70,6 +70,21 @@ def test_http_access(url: str) -> Dict:
 def test_http_basic_auth(url: str, username: str, password: str) -> Dict:
     """Test HTTP Basic Auth with given credentials."""
     try:
+        # First, test without auth to see if auth is required
+        resp_no_auth = requests.get(url, timeout=5)
+        if resp_no_auth.status_code != 401:
+            # No auth required, so credentials don't matter
+            return {
+                "type": "http_basic_auth",
+                "url": url,
+                "username": username,
+                "password": password,
+                "status_code": resp_no_auth.status_code,
+                "success": False,
+                "auth_required": False,
+            }
+        
+        # Auth is required, now test with credentials
         resp = requests.get(url, auth=(username, password), timeout=5)
         success = resp.status_code < 400
         return {
@@ -79,6 +94,7 @@ def test_http_basic_auth(url: str, username: str, password: str) -> Dict:
             "password": password,
             "status_code": resp.status_code,
             "success": success,
+            "auth_required": True,
         }
     except Exception as e:
         return {
@@ -91,15 +107,40 @@ def test_http_basic_auth(url: str, username: str, password: str) -> Dict:
 
 def test_http_basic_auth_curl(url: str, username: str, password: str) -> Dict:
     """Attempt HTTP Basic Auth using system `curl`. Falls back to requests if curl fehlt."""
-    cmd = [
-        "curl",
-        "-s",
-        "-o", "/dev/null",
-        "-w", "%{http_code}",
-        "-u", f"{username}:{password}",
-        url,
-    ]
     try:
+        # First, test without auth
+        cmd_no_auth = [
+            "curl",
+            "-s",
+            "-o", "/dev/null",
+            "-w", "%{http_code}",
+            url,
+        ]
+        proc_no_auth = subprocess.run(cmd_no_auth, capture_output=True, text=True, timeout=6)
+        stdout_no_auth = proc_no_auth.stdout.strip()
+        status_no_auth = int(stdout_no_auth) if stdout_no_auth.isdigit() else None
+        if status_no_auth != 401:
+            # No auth required
+            return {
+                "type": "http_basic_auth",
+                "method": "curl",
+                "url": url,
+                "username": username,
+                "password": password,
+                "status_code": status_no_auth,
+                "success": False,
+                "auth_required": False,
+            }
+        
+        # Auth required, test with credentials
+        cmd = [
+            "curl",
+            "-s",
+            "-o", "/dev/null",
+            "-w", "%{http_code}",
+            "-u", f"{username}:{password}",
+            url,
+        ]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=6)
         stdout = proc.stdout.strip()
         status_code = int(stdout) if stdout.isdigit() else None
@@ -112,6 +153,7 @@ def test_http_basic_auth_curl(url: str, username: str, password: str) -> Dict:
             "password": password,
             "status_code": status_code,
             "success": success,
+            "auth_required": True,
         }
     except FileNotFoundError:
         # curl not available, fallback
@@ -286,26 +328,36 @@ def analyze_result(result: Dict, description: str) -> Dict:
     t = result.get('type')
 
     if t == 'http_basic_auth':
-        # success true indicates credentials worked
-        if result.get('success'):
+        # success true indicates credentials worked, but only if auth was required
+        if result.get('auth_required') and result.get('success'):
             user = result.get('username', '?')
             pwd = result.get('password', '?')
             sev = 'high'
             summary = f'✗ Anmeldung möglich mit: {user} / {pwd}'
+            method = result.get('method', 'requests')
+            if method == 'curl':
+                cmd_example = f'curl -u {user}:{pwd} {result.get("url", "")}'
+            else:
+                cmd_example = f'requests.get("{result.get("url", "")}", auth=("{user}", "{pwd}"))'
             remediation = [
                 f'Sofort Passwort für "{user}" ändern oder Account deaktivieren',
                 'HTTPS erzwingen, Basic-Auth hinter zusätzlicher Auth oder VPN betreiben',
                 'Logs auf verdächtige Aktivitäten prüfen',
+                f'Beispiel-Befehl: {cmd_example}',
             ]
-        elif result.get('status_code') and result.get('status_code') >= 400:
+        elif result.get('auth_required') and not result.get('success'):
             sev = 'info'
             summary = f'Zugang verweigert ({result.get("username", "?")} / {result.get("password", "?")})'
+        elif not result.get('auth_required'):
+            sev = 'info'
+            summary = f'Keine Auth erforderlich ({result.get("username", "?")} / {result.get("password", "?")})'
         elif result.get('error'):
             sev = 'warning'
             summary = 'Fehler beim Test: ' + str(result.get('error'))
 
     elif t == 'backdoor_file':
         path = result.get('path', '?')
+        url = result.get('url', '?')
         if result.get('found'):
             sev = 'critical'
             status = result.get('status_code', '?')
@@ -314,6 +366,7 @@ def analyze_result(result: Dict, description: str) -> Dict:
                 f'Sofort "{path}" aus Webroot entfernen/sperren',
                 'Gegebenenfalls Server isolieren und forensisch untersuchen',
                 'Alle Secrets/Keys/Passwörter rotieren',
+                f'Zugriff testen: curl {url} oder requests.get("{url}")',
             ]
         else:
             sev = 'info'
